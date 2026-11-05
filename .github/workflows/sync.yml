@@ -1,0 +1,49 @@
+name: Sync Strava
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours (UTC)
+  workflow_dispatch:         # the "Run workflow" button, and the Chrome button
+    inputs:
+      full:
+        description: "Re-read the whole Strava history"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: strava-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download new activities and update coverage
+        run: node scripts/sync.js
+        env:
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+          FULL_SYNC: ${{ inputs.full && '1' || '' }}
+
+      - name: Save the updated data
+        run: |
+          git config user.name "strava-sync"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add activities.json coverage.json cache.json villages.json geo
+          if git diff --cached --quiet; then
+            echo "Nothing new."
+          else
+            git commit -m "Sync from Strava"
+            git push
+          fi
