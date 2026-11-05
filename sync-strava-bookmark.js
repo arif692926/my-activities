@@ -15,8 +15,18 @@
   try {
     let token = localStorage.getItem(KEY);
     if (!token) {
-      token = (prompt('First time only: paste your GitHub token for arif692926/my-activities (Contents: Read and write).\nIt is saved only in this browser.') || '').trim();
-      if (!token) { say('No token entered – nothing was changed.', true); return; }
+      token = await new Promise(resolve => {
+        box.querySelector('#ahs-msg').innerHTML = 'First time only: paste your GitHub key (starts with <b>ghp_</b>) and click <b>Save</b>. It is kept only in this browser.' +
+          '<input id="ahs-key" type="password" autocomplete="off" placeholder="ghp_…" style="width:100%;box-sizing:border-box;margin:8px 0 6px;padding:7px;border:1px solid #999;border-radius:6px;font:13px monospace">' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end"><button id="ahs-cancel" style="padding:6px 12px;border:1px solid #999;background:#fff;border-radius:6px;cursor:pointer">Cancel</button><button id="ahs-save" style="padding:6px 14px;border:0;background:#c8102e;color:#fff;border-radius:6px;font-weight:600;cursor:pointer">Save</button></div>';
+        const inp = box.querySelector('#ahs-key'); inp.focus();
+        const done = v => resolve((v || '').trim());
+        box.querySelector('#ahs-save').onclick = () => done(inp.value);
+        inp.onkeydown = e => { if (e.key === 'Enter') done(inp.value); };
+        box.querySelector('#ahs-cancel').onclick = () => done('');
+      });
+      if (!token) { say('No key entered – nothing was changed.', true); return; }
+      if (!/^(ghp_|github_pat_)/.test(token)) { say('That does not look like a GitHub key (it should start with ghp_). Nothing was changed. Click Sync again.', true); return; }
       localStorage.setItem(KEY, token);
     }
     const gh = (p, o = {}) => fetch('https://api.github.com/repos/' + REPO + p, { ...o, headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(o.headers || {}) } });
@@ -24,7 +34,7 @@
     // 1. current data on GitHub
     say('Reading your page data from GitHub…');
     const cur = await gh('/contents/' + FILE + '?ref=main');
-    if (cur.status === 401 || cur.status === 403 || cur.status === 404) { localStorage.removeItem(KEY); say('GitHub did not accept the token (' + cur.status + '). Click the bookmark again and paste a valid token.', true); return; }
+    if (cur.status === 401 || cur.status === 403 || cur.status === 404) { localStorage.removeItem(KEY); say('GitHub did not accept the key (' + cur.status + '). It has been forgotten – click Sync again and paste a key with public_repo access.', true); return; }
     const curJ = await cur.json();
     const bin = atob(curJ.content.replace(/\n/g, '')), bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
     const data = JSON.parse(new TextDecoder().decode(bytes));
