@@ -1,0 +1,234 @@
+<!-- ===== My Physical Activities (Blogger page) – data synced from Strava by github.com/arif692926/my-activities ===== -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+.cm-wrap{font-family:inherit;color:#111;max-width:1100px;margin:0 auto}
+.cm-tabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:2px solid #111;margin:0 0 16px}
+.cm-tab{border:0;background:#fff;color:#111;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-2px}
+.cm-tab.on{border-bottom-color:#c8102e;color:#c8102e}
+.cm-pane{display:none}.cm-pane.on{display:block}
+.cm-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 12px}
+.cm-stat{background:#f5f5f5;border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px}
+.cm-stat b{display:block;font-size:26px;line-height:1.1;color:#111}
+.cm-stat span{font-size:13px;color:#555}
+.cm-stat.cm-big{background:#c8102e;border-color:#c8102e}.cm-stat.cm-big b,.cm-stat.cm-big span{color:#fff}
+.cm-types{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+.cm-type{border:2px solid #111;background:#fff;color:#111;border-radius:999px;padding:7px 16px;font-size:15px;font-weight:600;cursor:pointer}
+.cm-type.on{background:#111;color:#fff}.cm-type small{font-weight:400;opacity:.8}
+.cm-years{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.cm-btn{border:1px solid #ccc;background:#fff;border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer;color:#111}
+.cm-btn.on{background:#111;color:#fff;border-color:#111}
+.cm-main{display:grid;grid-template-columns:1fr 290px;gap:12px}
+@media (max-width:760px){.cm-main{grid-template-columns:1fr}}
+.cm-map{height:520px;border-radius:10px;border:1px solid #ddd;z-index:0}
+.cm-side{max-height:520px;overflow:auto;border:1px solid #e5e5e5;border-radius:10px;padding:8px}
+.cm-tools{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.cm-ride{display:flex;gap:9px;align-items:flex-start;padding:7px 8px;border-radius:8px;cursor:pointer}
+.cm-ride:hover,.cm-ride.sel{background:#f5f5f5}
+.cm-dot{width:11px;height:11px;border-radius:50%;flex:none;margin-top:4px}
+.cm-ride h4{margin:0;font-size:14px;font-weight:600}.cm-ride p{margin:1px 0 0;font-size:12px;color:#555}
+.cm-ride a,.cm-note a{color:#fc4c02;text-decoration:none}
+.cm-note{font-size:12px;color:#666;margin-top:8px}
+.cm-h{font-size:18px;margin:18px 0 8px}
+.cm-table{width:100%;border-collapse:collapse;font-size:14px}
+.cm-table th{text-align:left;background:#111;color:#fff;padding:7px 8px;font-weight:600}
+.cm-table td{border-bottom:1px solid #e5e5e5;padding:6px 8px;vertical-align:top}
+.cm-table td small{color:#555}
+.cm-dist td{background:#f5f5f5;font-weight:700}
+.cm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.cm-card{border:1px solid #e5e5e5;border-radius:10px;padding:12px}
+.cm-card .flag{font-size:34px;line-height:1}
+.cm-card h4{margin:6px 0 4px;font-size:16px}
+.cm-badge{display:inline-block;border:1px solid #111;border-radius:999px;padding:1px 8px;font-size:12px;margin:2px 3px 2px 0}
+.cm-badge.hand{border-color:#c8102e;color:#c8102e}
+.cm-empty{background:#f5f5f5;border-radius:10px;padding:18px;color:#555}
+</style>
+
+<div class="cm-wrap">
+  <div class="cm-tabs" id="cm-tabs">
+    <button class="cm-tab on" data-p="act">Activities map</button>
+    <button class="cm-tab" data-p="bd">Bangladesh: upazilas &amp; villages</button>
+    <button class="cm-tab" data-p="world">Countries</button>
+    <button class="cm-tab" data-p="swim">Swimming</button>
+  </div>
+
+  <!-- 1. Activities map (cycling, walking, running) -->
+  <div class="cm-pane on" id="p-act">
+    <div class="cm-types" id="cm-types"></div>
+    <div class="cm-stats">
+      <div class="cm-stat cm-big"><b id="cm-km">0</b><span id="cm-km-label">km so far</span></div>
+      <div class="cm-stat"><b id="cm-rides">0</b><span id="cm-count-label">activities</span></div>
+      <div class="cm-stat"><b id="cm-tiles">0</b><span>map squares explored</span></div>
+      <div class="cm-stat"><b id="cm-long">0</b><span>km longest</span></div>
+      <div class="cm-stat"><b id="cm-since">–</b><span>active since</span></div>
+    </div>
+    <div class="cm-years" id="cm-years"></div>
+    <div class="cm-main">
+      <div class="cm-map" id="cm-map"></div>
+      <div class="cm-side">
+        <div class="cm-tools"><button class="cm-btn" id="cm-all">Show all</button><button class="cm-btn on" id="cm-tilebtn">Explored areas</button></div>
+        <div id="cm-list"></div>
+        <div class="cm-note">Recorded with a Magene bike computer and synced from <a href="https://www.strava.com" target="_blank" rel="noopener">Strava</a>. The start and end of each route are hidden for privacy. <span id="cm-updated"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Bangladesh coverage -->
+  <div class="cm-pane" id="p-bd">
+    <div class="cm-stats">
+      <div class="cm-stat cm-big"><b id="bd-upz">–</b><span>upazilas reached</span></div>
+      <div class="cm-stat"><b id="bd-uni">–</b><span>unions &amp; city wards reached</span></div>
+      <div class="cm-stat"><b id="bd-dis">–</b><span>of 64 districts</span></div>
+      <div class="cm-stat"><b id="bd-vil">–</b><span>villages passed (at least)</span></div>
+    </div>
+    <div class="cm-map" id="bd-map" style="height:420px"></div>
+    <div class="cm-note" id="bd-note"></div>
+    <h3 class="cm-h">Upazilas, unions and city wards by district</h3>
+    <div id="bd-table"></div>
+    <h3 class="cm-h">Villages</h3>
+    <div id="bd-villages"></div>
+  </div>
+
+  <!-- 3. Countries -->
+  <div class="cm-pane" id="p-world">
+    <div class="cm-stats">
+      <div class="cm-stat cm-big"><b id="w-all">–</b><span>countries</span></div>
+      <div class="cm-stat"><b id="w-walk">–</b><span>walked in</span></div>
+      <div class="cm-stat"><b id="w-cyc">–</b><span>cycled in</span></div>
+    </div>
+    <div class="cm-cards" id="w-cards"></div>
+    <div class="cm-note">Counted automatically from my GPS routes on Strava – only places I have a GPS record for.</div>
+  </div>
+
+  <!-- 4. Swimming -->
+  <div class="cm-pane" id="p-swim">
+    <div class="cm-stats">
+      <div class="cm-stat cm-big"><b id="s-km">0</b><span>km swum</span></div>
+      <div class="cm-stat"><b id="s-n">0</b><span>swims</span></div>
+      <div class="cm-stat"><b id="s-long">0</b><span>m longest swim</span></div>
+      <div class="cm-stat"><b id="s-since">–</b><span>swimming since</span></div>
+    </div>
+    <div id="s-list"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+var BASE="https://raw.githubusercontent.com/arif692926/my-activities/main/";
+var SETTINGS={tileZoom:14,center:[22.34,91.82],zoom:11};
+var TYPES=[{k:"r",name:"Cycling",unit:"rides"},{k:"w",name:"Walking",unit:"walks"},{k:"n",name:"Running",unit:"runs"}];
+var PALETTE=["#c8102e","#111111","#7a7a7a","#e4572e","#2e86ab","#7b2cbf","#f18f01","#17a398","#3a86ff","#6a994e","#d81159","#8f5d00","#118ab2"];
+var HOW={r:"Cycled",w:"Walked",n:"Ran",s:"Swam",cycled:"Cycled",walked:"Walked",ran:"Ran",swam:"Swam"};
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function fmtDate(d){if(!d)return "";var m=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],a=d.split("-");return +a[2]+" "+m[+a[1]-1]+" "+a[0];}
+function flag(iso){if(!iso||iso.length!==2)return "";return '<img src="https://flagcdn.com/w80/'+iso.toLowerCase()+'.png" width="48" height="32" alt="" style="border:1px solid #e5e5e5;border-radius:3px;object-fit:cover">';}
+function osm(){return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap contributors"});}
+
+/* ---------- tabs ---------- */
+var maps={},bdFit=null;
+document.querySelectorAll(".cm-tab").forEach(function(b){b.onclick=function(){
+  document.querySelectorAll(".cm-tab").forEach(function(x){x.classList.toggle("on",x===b);});
+  document.querySelectorAll(".cm-pane").forEach(function(p){p.classList.toggle("on",p.id==="p-"+b.dataset.p);});
+  setTimeout(function(){Object.keys(maps).forEach(function(k){maps[k].invalidateSize();});if(b.dataset.p==="bd"&&bdFit)bdFit();},60);
+  try{history.replaceState(null,"","#"+b.dataset.p);}catch(e){}
+};});
+
+/* ---------- 1. activities map ---------- */
+var map=maps.act=L.map("cm-map",{preferCanvas:true}).setView(SETTINGS.center,SETTINGS.zoom);
+var base=osm().addTo(map);
+var cyc=L.tileLayer("https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",{maxZoom:19,attribution:"CyclOSM | &copy; OpenStreetMap contributors"});
+L.control.layers({"Standard map":base,"Cycling map":cyc}).addTo(map);
+var tileLayer=L.layerGroup().addTo(map),routeLayer=L.layerGroup().addTo(map);
+var listEl=$("cm-list"),all=[],yearSel="all",tileOn=true,typeSel="r";
+function dist(a,b){var R=6371,r=Math.PI/180,x=(b[0]-a[0])*r,y=(b[1]-a[1])*r,h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(y/2)*Math.sin(y/2);return 2*R*Math.asin(Math.sqrt(h));}
+function decode(s){var i=0,la=0,lo=0,out=[];while(i<s.length){var b,sh=0,r=0;do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5;}while(b>=32);la+=(r&1)?~(r>>1):(r>>1);sh=0;r=0;do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5;}while(b>=32);lo+=(r&1)?~(r>>1):(r>>1);out.push([la/1e5,lo/1e5]);}return out;}
+function tileKey(lat,lon,z){var n=Math.pow(2,z),x=Math.floor((lon+180)/360*n),y=Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n);return x+"/"+y;}
+function tileBounds(k,z){var a=k.split("/"),x=+a[0],y=+a[1],n=Math.pow(2,z);function lat(yy){var m=Math.PI-2*Math.PI*yy/n;return 180/Math.PI*Math.atan(0.5*(Math.exp(m)-Math.exp(-m)));}return [[lat(y+1),x/n*360-180],[lat(y),(x+1)/n*360-180]];}
+function tilesOf(p){var t={};for(var i=0;i<p.length;i++){t[tileKey(p[i][0],p[i][1],SETTINGS.tileZoom)]=1;if(i){var n=Math.ceil(dist(p[i-1],p[i])/0.4);for(var k=1;k<n;k++){var f=k/n;t[tileKey(p[i-1][0]+(p[i][0]-p[i-1][0])*f,p[i-1][1]+(p[i][1]-p[i-1][1])*f,SETTINGS.tileZoom)]=1;}}}return Object.keys(t);}
+function colorOf(y){return PALETTE[(+y)%PALETTE.length];}
+function typeName(t){for(var i=0;i<TYPES.length;i++)if(TYPES[i].k===t)return TYPES[i].name;return "Activity";}
+function build(r,pts){var y=r.d.slice(0,4),o={r:r,y:y,km:r.km,pts:pts,line:null,tiles:pts.length?tilesOf(pts):[]};
+  if(pts.length){o.line=L.polyline(pts,{color:colorOf(y),weight:3,opacity:.75});var link=r.id?' · <a href="https://www.strava.com/activities/'+r.id+'" target="_blank" rel="noopener">Strava</a>':"";o.line.bindPopup("<b>"+typeName(r.t)+" – "+fmtDate(r.d)+"</b><br>"+r.km.toFixed(1)+" km"+link);o.line.on("click",function(){select(o);});}
+  all.push(o);}
+function visible(){return all.filter(function(o){return o.r.t===typeSel&&(yearSel==="all"||o.y===yearSel);});}
+function yearsOf(){var ys=[];all.forEach(function(o){if(o.r.t===typeSel&&ys.indexOf(o.y)<0)ys.push(o.y);});return ys.sort();}
+function render(){var v=visible().sort(function(a,b){return b.r.d.localeCompare(a.r.d);});routeLayer.clearLayers();tileLayer.clearLayers();listEl.innerHTML="";var tiles={},tot=0,longest=0;
+  v.forEach(function(o){tot+=o.km;longest=Math.max(longest,o.km);if(o.line)o.line.setStyle({opacity:.75,weight:3}).addTo(routeLayer);o.tiles.forEach(function(k){tiles[k]=1;});
+    var it=document.createElement("div");it.className="cm-ride";o.item=it;var link=o.r.id?' · <a href="https://www.strava.com/activities/'+o.r.id+'" target="_blank" rel="noopener">Strava</a>':"";
+    it.innerHTML='<span class="cm-dot" style="background:'+colorOf(o.y)+'"></span><div><h4>'+fmtDate(o.r.d)+'</h4><p>'+o.km.toFixed(1)+" km"+(o.line?"":" · no GPS route")+link+"</p></div>";
+    it.onclick=function(e){if(e.target.tagName!=="A")select(o);};listEl.appendChild(it);});
+  var keys=Object.keys(tiles);keys.forEach(function(k){L.rectangle(tileBounds(k,SETTINGS.tileZoom),{color:"#c8102e",weight:1,fillColor:"#c8102e",fillOpacity:.12,interactive:false}).addTo(tileLayer);});
+  $("cm-km").textContent=Math.round(tot).toLocaleString();$("cm-rides").textContent=v.length;$("cm-tiles").textContent=keys.length;$("cm-long").textContent=longest.toFixed(1);
+  var first=v.length?v[v.length-1].r.d:"";$("cm-since").textContent=first?first.slice(0,4):"–";fitAll(v);}
+function fitAll(v){var b=null;(v||visible()).forEach(function(o){if(o.line){o.line.setStyle({opacity:.75,weight:3});b=b?b.extend(o.line.getBounds()):L.latLngBounds(o.line.getBounds());}});
+  document.querySelectorAll(".cm-ride").forEach(function(el){el.classList.remove("sel");});if(b)map.fitBounds(b,{padding:[20,20]});map.closePopup();}
+function select(o){document.querySelectorAll(".cm-ride").forEach(function(el){el.classList.remove("sel");});if(o.item){o.item.classList.add("sel");o.item.scrollIntoView({block:"nearest"});}
+  visible().forEach(function(x){if(x.line)x.line.setStyle({opacity:x===o?1:.12,weight:x===o?6:2});});if(o.line){o.line.bringToFront();map.fitBounds(o.line.getBounds(),{padding:[30,30]});o.line.openPopup();}}
+function typeButtons(){var box=$("cm-types");box.innerHTML="";TYPES.forEach(function(T){var n=all.filter(function(o){return o.r.t===T.k;}),km=n.reduce(function(s,o){return s+o.km;},0);
+  var b=document.createElement("button");b.className="cm-type"+(T.k===typeSel?" on":"");b.innerHTML=T.name+" <small>"+Math.round(km).toLocaleString()+" km</small>";b.onclick=function(){typeSel=T.k;yearSel="all";typeButtons();yearButtons();render();};box.appendChild(b);});
+  var T=TYPES.filter(function(x){return x.k===typeSel;})[0];$("cm-km-label").textContent="km "+T.name.toLowerCase()+" so far";$("cm-count-label").textContent=T.unit;}
+function yearButtons(){var years=yearsOf(),box=$("cm-years");box.innerHTML="";["all"].concat(years.slice().reverse()).forEach(function(y){var b=document.createElement("button");b.className="cm-btn"+(y===yearSel?" on":"");b.textContent=y==="all"?"All years":y;if(y!=="all")b.style.borderLeft="4px solid "+colorOf(y);b.onclick=function(){yearSel=y;yearButtons();render();};box.appendChild(b);});}
+$("cm-all").onclick=function(){fitAll();};
+var tb=$("cm-tilebtn");tb.onclick=function(){tileOn=!tileOn;if(tileOn){tileLayer.addTo(map);tb.classList.add("on");}else{map.removeLayer(tileLayer);tb.classList.remove("on");}};
+
+/* ---------- 4. swimming ---------- */
+function swimming(items,manual){
+  var s=items.filter(function(r){return r.t==="s";}).map(function(r){return {d:r.d,km:r.km,id:r.id};}).concat((manual.swims||[]).map(function(m){return {d:m.date||m.d||"",km:+m.km||0,note:m.note||"",hand:true};}));
+  s.sort(function(a,b){return b.d.localeCompare(a.d);});
+  var tot=s.reduce(function(x,o){return x+o.km;},0),longest=s.reduce(function(x,o){return Math.max(x,o.km);},0);
+  $("s-km").textContent=tot.toFixed(1);$("s-n").textContent=s.length;$("s-long").textContent=Math.round(longest*1000);$("s-since").textContent=s.length?s[s.length-1].d.slice(0,4):"–";
+  if(!s.length){$("s-list").innerHTML='<div class="cm-empty">No swims yet. Swims recorded on Strava will appear here automatically.</div>';return;}
+  var byYear={};s.forEach(function(o){var y=o.d.slice(0,4);(byYear[y]=byYear[y]||[]).push(o);});
+  var h="";Object.keys(byYear).sort().reverse().forEach(function(y){var L2=byYear[y],km=L2.reduce(function(x,o){return x+o.km;},0);
+    h+='<h3 class="cm-h">'+y+' <small style="font-weight:400;color:#555">· '+L2.length+' swims · '+km.toFixed(1)+' km</small></h3><table class="cm-table"><tr><th>Date</th><th>Distance</th><th></th></tr>';
+    L2.forEach(function(o){h+="<tr><td>"+fmtDate(o.d)+"</td><td>"+Math.round(o.km*1000).toLocaleString()+" m</td><td>"+(o.id?'<a href="https://www.strava.com/activities/'+o.id+'" target="_blank" rel="noopener" style="color:#fc4c02">Strava</a>':'<span class="cm-badge hand">added by hand</span> '+esc(o.note))+"</td></tr>";});h+="</table>";});
+  $("s-list").innerHTML=h;}
+
+/* ---------- 2. Bangladesh ---------- */
+function bangladesh(c){
+  var man=c.manual||{},U=(c.upazilas||[]).slice(),UN=(c.unions||[]).slice(),V=(c.villages||[]).slice();
+  (man.upazilas||[]).forEach(function(m){if(!U.some(function(u){return u.name===m.name;}))U.push({name:m.name,district:m.district||"",first:m.year||"",n:0,hand:true});});
+  (man.unions||[]).forEach(function(m){UN.push({name:m.name,upazila:m.upazila||"",district:m.district||"",first:m.year||"",hand:true});});
+  (man.villages||[]).forEach(function(m){V.push({name:m.name,bn:m.bn||"",lat:m.lat,lon:m.lon,first:m.year||"",hand:true});});
+  var D={};U.forEach(function(u){if(u.district)D[u.district]=1;});
+  $("bd-upz").textContent=U.length;$("bd-uni").textContent=UN.length;$("bd-dis").textContent=Object.keys(D).length;$("bd-vil").textContent=V.length;
+  var t=c.totals||{};$("bd-note").innerHTML="Counted automatically from my GPS routes (the first and last 700 m of each route are left out). Boundary data: geoBoundaries ("+(t.upazilaAreas||"")+" upazilas and city thanas, "+(t.unions||"").toLocaleString()+" unions). Villages: OpenStreetMap, which so far marks only about "+(t.osmVillages?t.osmVillages.toLocaleString():"4,000")+" of Bangladesh's villages, so the real number is higher.";
+  var byD={};U.forEach(function(u){(byD[u.district||"Other"]=byD[u.district||"Other"]||[]).push(u);});
+  var h='<table class="cm-table"><tr><th>Upazila</th><th>Unions / wards reached</th><th>First visit</th><th>Activities</th></tr>';
+  Object.keys(byD).sort().forEach(function(d){h+='<tr class="cm-dist"><td colspan="4">'+esc(d)+" district · "+byD[d].length+" upazila"+(byD[d].length>1?"s":"")+"</td></tr>";
+    byD[d].sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(u){var un=UN.filter(function(x){return x.upazila===u.name;}).map(function(x){return esc(x.name);});
+      h+="<tr><td><b>"+esc(u.name)+"</b>"+(u.hand?' <span class="cm-badge hand">added by hand</span>':"")+"</td><td><small>"+(un.length?un.length+": "+un.join(", "):"–")+"</small></td><td>"+fmtDate(u.first)+"</td><td>"+(u.n||"")+"</td></tr>";});});
+  $("bd-table").innerHTML=h+"</table>";
+  V.sort(function(a,b){return (a.name||a.bn).localeCompare(b.name||b.bn);});
+  $("bd-villages").innerHTML=V.length?'<p>'+V.map(function(v){return "<span class=\"cm-badge"+(v.hand?" hand":"")+"\">"+esc(v.name||v.bn)+(v.name&&v.bn?" · "+esc(v.bn):"")+"</span>";}).join(" ")+"</p>":'<div class="cm-empty">No villages yet.</div>';
+  var m=maps.bd=L.map("bd-map",{preferCanvas:true,scrollWheelZoom:false}).setView([23.7,90.4],7);osm().addTo(m);var pts=[];
+  V.forEach(function(v){if(v.lat==null)return;pts.push([v.lat,v.lon]);L.circleMarker([v.lat,v.lon],{radius:6,color:"#fff",weight:1.5,fillColor:"#c8102e",fillOpacity:.9}).bindPopup("<b>"+esc(v.name||v.bn)+"</b>"+(v.bn&&v.name?"<br>"+esc(v.bn):"")+(v.first?"<br>first passed "+fmtDate(v.first):"")).addTo(m);});
+  all.forEach(function(o){if(o.line&&o.r.t!=="s")L.polyline(o.pts,{color:"#111",weight:1.5,opacity:.35,interactive:false}).addTo(m);});
+  var bb=null;all.forEach(function(o){if(o.line&&o.r.t!=="s")bb=bb?bb.extend(o.line.getBounds()):L.latLngBounds(o.line.getBounds());});pts.forEach(function(p){bb=bb?bb.extend(p):L.latLngBounds([p,p]);});bdFit=function(){if(bb)m.fitBounds(bb.pad(0.05));};
+}
+
+/* ---------- 3. countries ---------- */
+function countries(c){
+  var C={},man=c.manual||{};
+  Object.keys(c.countries||{}).forEach(function(t){(c.countries[t]||[]).forEach(function(x){var o=C[x.name]=C[x.name]||{name:x.name,iso:x.iso,how:{},first:x.first,km:0};o.how[t]=1;o.km+=x.km;if(x.first<o.first)o.first=x.first;});});
+  (man.countries||[]).forEach(function(m){var o=C[m.name]=C[m.name]||{name:m.name,iso:m.iso,how:{},first:m.year||"",km:0,hand:true,note:m.note||""};(m.how||[]).forEach(function(h){o.how[h==="cycled"?"r":h==="walked"?"w":h==="ran"?"n":h==="swam"?"s":h]=1;});if(!o.iso)o.iso=m.iso;if(m.note)o.note=m.note;});
+  var L2=Object.keys(C).map(function(k){return C[k];}).sort(function(a,b){return (a.first||"9").localeCompare(b.first||"9");});
+  $("w-all").textContent=L2.length;$("w-walk").textContent=L2.filter(function(o){return o.how.w;}).length;$("w-cyc").textContent=L2.filter(function(o){return o.how.r;}).length;
+  $("w-cards").innerHTML=L2.map(function(o){return '<div class="cm-card"><div class="flag">'+flag(o.iso)+"</div><h4>"+esc(o.name)+"</h4><div>"+["r","w","n","s"].filter(function(k){return o.how[k];}).map(function(k){return '<span class="cm-badge">'+HOW[k]+"</span>";}).join("")+(o.hand?'<span class="cm-badge hand">added by hand</span>':"")+"</div>"+
+    '<p class="cm-note" style="margin:6px 0 0">'+(o.km?Math.round(o.km).toLocaleString()+" km recorded":"")+(o.first?(o.km?" · since ":"")+(o.first.length>4?o.first.slice(0,4):o.first):"")+(o.note?"<br>"+esc(o.note):"")+"</p></div>";}).join("");
+}
+
+/* ---------- load data ---------- */
+function load(items){items.forEach(function(r){r.t=r.t||"r";if(r.t!=="s")build(r,r.l?decode(r.l):[]);});typeButtons();yearButtons();render();}
+Promise.all([
+  fetch(BASE+"activities.json",{cache:"no-cache"}).then(function(x){return x.json();}),
+  fetch(BASE+"coverage.json",{cache:"no-cache"}).then(function(x){return x.json();}).catch(function(){return {};})
+]).then(function(r){var a=r[0],c=r[1]||{};
+  if(a.updated)$("cm-updated").textContent="Last synced: "+fmtDate(a.updated.slice(0,10))+".";
+  load(a.items||[]);swimming(a.items||[],c.manual||{});bangladesh(c);countries(c);
+  var h=(location.hash||"").slice(1);if(h){var b=document.querySelector('.cm-tab[data-p="'+h+'"]');if(b)b.click();}
+}).catch(function(){$("cm-list").innerHTML='<p class="cm-note">Could not load the activity data right now. Please try again later.</p>';});
+})();
+</script>
+<!-- ===== end of activities page ===== -->
