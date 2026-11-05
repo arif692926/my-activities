@@ -7,12 +7,12 @@
 //   NO_STRAVA=1    – skip Strava and only recompute coverage from the existing activities.json
 //   LIMIT=n        – (testing) only compute coverage for n new activities
 'use strict';
-const fs = require('fs'), path = require('path');
+const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const ROOT = path.join(__dirname, '..');
 const P = f => path.join(ROOT, f);
 const HIDE_ENDS_M = 700;        // privacy: metres removed from the start and end of every published route
 const VILLAGE_RADIUS_M = 400;   // a village counts when its centre point is within this distance of your route
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const MIN_FOREIGN_POINTS = 3;   // a foreign country needs at least this many route samples (~1 km) inside it
 const GEO = {
   upazila: { file: 'geo/bgd_upazila.geojson', url: 'https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/gbOpen/BGD/ADM3/geoBoundaries-BGD-ADM3_simplified.geojson' },
@@ -93,37 +93,78 @@ async function strava(existing) {
   return out;
 }
 
-// ---------- villages: every OpenStreetMap place=village in Bangladesh, downloaded in one request and refreshed monthly ----------
+// ---------- villages: OpenStreetMap place=village + GeoNames populated places, merged and refreshed monthly ----------
+function unzipEntry(buf, want) { // minimal ZIP reader (one file, deflate or stored)
+  let e = buf.length - 22; while (e >= 0 && buf.readUInt32LE(e) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('not a zip');
+  let p = buf.readUInt32LE(e + 16); const n = buf.readUInt16LE(e + 10);
+  for (let i = 0; i < n; i++) {
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), nl = buf.readUInt16LE(p + 28), xl = buf.readUInt16LE(p + 30), cl = buf.readUInt16LE(p + 32), off = buf.readUInt32LE(p + 42);
+    const name = buf.slice(p + 46, p + 46 + nl).toString();
+    if (name === want) { const start = off + 30 + buf.readUInt16LE(off + 26) + buf.readUInt16LE(off + 28); const raw = buf.slice(start, start + csize); return method === 8 ? zlib.inflateRawSync(raw) : raw; }
+    p += 46 + nl + xl + cl;
+  }
+  throw new Error(want + ' not in zip');
+}
+async function osmVillages() {
+  const q = '[out:json][timeout:300];area["ISO3166-1"="BD"][admin_level=2]->.bd;node[place=village](area.bd);out body;';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      log('downloading villages from OpenStreetMap…');
+      const r = await fetch(OVERPASS[attempt % OVERPASS.length], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'my-activities-sync/1.0 (+https://github.com/arif692926/my-activities)', 'Accept': 'application/json' }, body: new URLSearchParams({ data: q }) });
+      if (!r.ok) throw new Error('overpass ' + r.status);
+      const j = await r.json();
+      const rows = j.elements.map(e => { const t = e.tags || {}; const bn = t['name:bn'] || (/[ঀ-৿]/.test(t.name || '') ? t.name : ''); return ['o' + e.id, +e.lat.toFixed(5), +e.lon.toFixed(5), t['name:en'] || (bn === t.name ? '' : t.name || ''), bn, 'OpenStreetMap']; });
+      if (rows.length < 1000) throw new Error('village list too small: ' + rows.length);
+      return rows;
+    } catch (e) { log('OpenStreetMap download failed:', e.message); await sleep(30000); }
+  }
+  return null;
+}
+async function geonamesVillages() {
+  try {
+    log('downloading places from GeoNames…');
+    const r = await fetch('https://download.geonames.org/export/dump/BD.zip', { headers: { 'User-Agent': 'my-activities-sync/1.0 (+https://github.com/arif692926/my-activities)' } });
+    if (!r.ok) throw new Error('geonames ' + r.status);
+    const txt = unzipEntry(Buffer.from(await r.arrayBuffer()), 'BD.txt').toString('utf8');
+    const rows = [];
+    for (const line of txt.split('\n')) {
+      const c = line.split('\t');
+      // populated places only; skip parts of cities (PPLX), district/division seats and capitals (towns), and big places
+      if (c[6] !== 'P' || !/^PPL$|^PPLL$|^PPLF$|^PPLS$/.test(c[7]) || (+c[14] || 0) > 50000) continue;
+      rows.push(['g' + c[0], +(+c[4]).toFixed(5), +(+c[5]).toFixed(5), c[2] || c[1], '', 'GeoNames']);
+    }
+    if (rows.length < 10000) throw new Error('GeoNames list too small: ' + rows.length);
+    return rows;
+  } catch (e) { log('GeoNames download failed:', e.message); return null; }
+}
 async function loadVillages() {
   const file = P('geo/bd_villages.json');
   let saved = null; try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-  if (Array.isArray(saved)) saved = { d: new Date().toISOString(), rows: saved };
-  const fresh = saved && (Date.now() - Date.parse(saved.d)) < 30 * 86400000;
+  const fresh = saved && saved.v === 2 && (Date.now() - Date.parse(saved.d)) < 30 * 86400000;
   if (!fresh) {
-    const q = '[out:json][timeout:300];area["ISO3166-1"="BD"][admin_level=2]->.bd;node[place=village](area.bd);out body;';
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        log('downloading village list from OpenStreetMap…');
-        const r = await fetch(OVERPASS[attempt % OVERPASS.length], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'my-activities-sync/1.0 (+https://github.com/arif692926/my-activities)', 'Accept': 'application/json' }, body: new URLSearchParams({ data: q }) });
-        if (!r.ok) throw new Error('overpass ' + r.status);
-        const j = await r.json();
-        const rows = j.elements.map(e => { const t = e.tags || {}; const bn = t['name:bn'] || (/[ঀ-৿]/.test(t.name || '') ? t.name : ''); return [e.id, +e.lat.toFixed(5), +e.lon.toFixed(5), t['name:en'] || (bn === t.name ? '' : t.name || ''), bn]; });
-        if (rows.length < 1000) throw new Error('village list too small: ' + rows.length);
-        fs.mkdirSync(path.dirname(file), { recursive: true }); saved = { d: new Date().toISOString(), rows }; fs.writeFileSync(file, JSON.stringify(saved)); log('villages downloaded:', rows.length); break;
-      } catch (e) { log('village download failed:', e.message); await sleep(30000); }
+    const osm = await osmVillages(), gn = await geonamesVillages();
+    const oldOsm = saved && Array.isArray(saved.rows) ? saved.rows.filter(r => String(r[0]).startsWith('o') || saved.v !== 2).map(r => String(r[0]).startsWith('o') ? r : ['o' + r[0], r[1], r[2], r[3], r[4], 'OpenStreetMap']) : null;
+    const base = osm || oldOsm || [];
+    if (base.length || gn) {
+      // drop a GeoNames place when an OpenStreetMap village is within 500 m (same village, mapped twice)
+      const g = new Map(); for (const r of base) { const k = Math.floor(r[1] * 100) + ':' + Math.floor(r[2] * 100); (g.get(k) || g.set(k, []).get(k)).push(r); }
+      const extra = (gn || []).filter(r => { const ci = Math.floor(r[1] * 100), cj = Math.floor(r[2] * 100); for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (const o of g.get((ci + di) + ':' + (cj + dj)) || []) if (dist([r[1], r[2]], [o[1], o[2]]) < 500) return false; return true; });
+      saved = { v: 2, d: new Date().toISOString(), rows: base.concat(extra) };
+      fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(saved));
+      log(`villages: ${base.length} OpenStreetMap + ${extra.length} GeoNames = ${saved.rows.length}`);
     }
   }
   if (!saved) return null;
-  const rows = saved.rows, grid = new Map();
-  for (const r of rows) { const k = Math.floor(r[1] * 100) + ':' + Math.floor(r[2] * 100); (grid.get(k) || grid.set(k, []).get(k)).push(r); }
+  const grid = new Map();
+  for (const r of saved.rows) { const k = Math.floor(r[1] * 100) + ':' + Math.floor(r[2] * 100); (grid.get(k) || grid.set(k, []).get(k)).push(r); }
   return grid;
-}
-function villagesNear(grid, pts) {
+}function villagesNear(grid, pts) {
   const found = new Map();
   for (const p of pts) {
     const ci = Math.floor(p[0] * 100), cj = Math.floor(p[1] * 100);
     for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (const r of grid.get((ci + di) + ':' + (cj + dj)) || []) {
-      if (!found.has(String(r[0])) && dist(p, [r[1], r[2]]) <= VILLAGE_RADIUS_M) found.set(String(r[0]), { name: r[3], bn: r[4], lat: r[1], lon: r[2] });
+      if (!found.has(String(r[0])) && dist(p, [r[1], r[2]]) <= VILLAGE_RADIUS_M) found.set(String(r[0]), { name: r[3], bn: r[4], lat: r[1], lon: r[2], src: r[5] || 'OpenStreetMap' });
     }
   }
   return found;
@@ -154,6 +195,8 @@ function villagesNear(grid, pts) {
   const districtOf = {}; // upazila name -> district (by a point inside the upazila)
   const villages = readJSON('villages.json', {});
   const vgrid = await loadVillages();
+  // a village counts only if it lies in a rural union (not a city or town ward)
+  const ruralAt = (lat, lon) => { const f = locate(upaz, lat, lon); if (!f) return false; const un = locate(unionsIn.get(f.name) || [], lat, lon) || locate(unionsIn.get('') || [], lat, lon); return !!un && !/^ward\b/i.test(un.name) && !/paurashava|pourashava|municipality/i.test(un.name); };
   let todo = data.items.filter(a => a.l && (!cache[a.id] || cache[a.id].v !== CACHE_VERSION));
   if (process.env.LIMIT) todo = todo.slice(0, +process.env.LIMIT);
   log('coverage to compute:', todo.length);
@@ -175,7 +218,7 @@ function villagesNear(grid, pts) {
     }
     const c = new Set(Object.entries(foreign).filter(([, n]) => n >= MIN_FOREIGN_POINTS).map(([key]) => key));
     if (inBD) c.add('BD|Bangladesh');    let v = null;
-    if (vgrid) { v = []; for (const [vid, info] of villagesNear(vgrid, pts)) { villages[vid] = info; v.push(vid); } }
+    if (vgrid) { v = []; for (const [vid, info] of villagesNear(vgrid, pts)) { if (!ruralAt(info.lat, info.lon)) continue; villages[vid] = info; v.push(vid); } }
     cache[a.id] = { v: v === null ? 0 : CACHE_VERSION, u: [...u].map(x => x + (districtOf[x] ? '|' + districtOf[x] : '')), un: [...un], c: [...c], vi: v || [] };
     if (++n % 50 === 0) { log(`coverage ${n}/${todo.length}`); writeJSON('cache.json', cache); writeJSON('villages.json', villages); }
   }
@@ -193,8 +236,8 @@ function villagesNear(grid, pts) {
   const round = o => ({ ...o, km: Math.round(o.km * 10) / 10 });
   const coverage = {
     updated: new Date().toISOString(),
-    note: `Upazila and country boundaries: geoBoundaries and Natural Earth. Villages: OpenStreetMap place=village within ${VILLAGE_RADIUS_M} m of a route. Start and end ${HIDE_ENDS_M} m of each route are excluded.`,
-    totals: { upazilaAreas: upaz.length, unions: unions.length, districts: dist2.length, osmVillages: vgrid ? [...vgrid.values()].reduce((s, x) => s + x.length, 0) : 0 },
+    note: `Upazila and country boundaries: geoBoundaries and Natural Earth. Villages: OpenStreetMap and GeoNames (CC BY 4.0) places within ${VILLAGE_RADIUS_M} m of a route, in rural unions only. Start and end ${HIDE_ENDS_M} m of each route are excluded.`,
+    totals: { upazilaAreas: upaz.length, unions: unions.length, districts: dist2.length, villageList: vgrid ? [...vgrid.values()].reduce((s, x) => s + x.length, 0) : 0 },
     upazilas: Object.values(U).map(round).sort((a, b) => a.district.localeCompare(b.district) || a.name.localeCompare(b.name)),
     unions: Object.values(UN).map(o => ({ ...o, district: (U[o.upazila] || {}).district || '' })).sort((a, b) => a.district.localeCompare(b.district) || a.upazila.localeCompare(b.upazila) || a.name.localeCompare(b.name)),
     villages: Object.values(V).sort((a, b) => a.first.localeCompare(b.first)),
