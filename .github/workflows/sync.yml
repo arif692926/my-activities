@@ -1,14 +1,12 @@
-name: Sync Strava
+name: Update coverage
 
+# Runs whenever the "Sync Strava" Chrome bookmark saves new activities to activities.json.
+# It works out the upazilas, unions, villages and countries, then saves coverage.json.
 on:
-  schedule:
-    - cron: "0 */6 * * *"   # every 6 hours (UTC)
-  workflow_dispatch:         # the "Run workflow" button, and the Chrome button
-    inputs:
-      full:
-        description: "Re-read the whole Strava history"
-        type: boolean
-        default: false
+  push:
+    branches: [main]
+    paths: [activities.json]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sync:
+  coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -28,22 +26,20 @@ jobs:
         with:
           node-version: 20
 
-      - name: Download new activities and update coverage
+      - name: Work out upazilas, unions, villages and countries
         run: node scripts/sync.js
         env:
-          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
-          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
-          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
-          FULL_SYNC: ${{ inputs.full && '1' || '' }}
+          NO_STRAVA: "1"
 
-      - name: Save the updated data
+      - name: Save the results
         run: |
           git config user.name "strava-sync"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add activities.json coverage.json cache.json villages.json geo
+          git add coverage.json cache.json villages.json geo
           if git diff --cached --quiet; then
             echo "Nothing new."
           else
-            git commit -m "Sync from Strava"
+            git commit -m "Update coverage"
+            git pull --rebase --autostash
             git push
           fi
